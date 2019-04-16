@@ -21,10 +21,6 @@ class Vertex {
     this.attached_nets = [];
   }
 
-  reset_class() {
-    Vertex.id = Vertex.cid = 0;
-  }
-
   begin_new_cluster() {
     Vertex.cid += 1;
   }
@@ -194,6 +190,10 @@ class Vertex {
         }
 	*/
 }
+
+Vertex.reset_class = () => {
+  Vertex.id = Vertex.cid = 0;
+};
 
 Vertex.id = 0;
 

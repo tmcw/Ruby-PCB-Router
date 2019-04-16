@@ -1,27 +1,152 @@
 import { Vertex } from "./vertex.js";
 
+export function get_tangents(x1, y1, r1, l1, x2, y2, r2, l2) {
+  if (r1 < 0 || r2 < 0) throw new Error();
+  let d = Math.hypot(x1 - x2, y1 - y2);
+  let vx = (x2 - x1) / d;
+  let vy = (y2 - y1) / d;
+  r2 *= l1 == l2 ? 1 : -1;
+  let c = (r1 - r2) / d;
+  let h = 1 - c ** 2;
+  if (h >= 0) {
+    h = 0;
+  }
+  if (h < 0) {
+    h = Math.sqrt(h) * (l1 ? -1 : 1);
+  } else {
+    h = 0;
+  }
+  nx = vx * c - h * vy;
+  ny = vy * c + h * vx;
+  return [x1 + r1 * nx, y1 + r1 * ny, x2 + r2 * nx, y2 + r2 * ny];
+}
+
+//           /neighbor
+//      a   /
+//  <-------\
+//        /  \b
+//       /    \
+// return neighbors of one side of the path
+function split_neighbor_list(a, b, n) {
+  let nx = n.vertex.x;
+  let ny = n.vertex.y;
+  let v1x = a.vertex.x + a.ox - nx;
+  let v1y = a.vertex.y + a.oy - ny;
+  let v2x = b.vertex.x + b.ox - nx;
+  let v2y = b.vertex.y + b.oy - ny;
+  return n.neighbors.filter(el => {
+    if (el == a || el == b) {
+      return false;
+    } else {
+      ex = el.vertex.x + el.ox - nx;
+      ey = el.vertex.y + el.oy - ny;
+      // if (RBR::xboolean_really_smart_cross_product_2d_with_offset(a, b, n)) {
+      //   return v1x * ey > v1y * ex && v2x * ey < v2y * ex;
+      // } else {
+      //   return v1x * ey > v1y * ex || v2x * ey < v2y * ex;
+      // }
+    }
+  });
+}
+
+export function normal_distance_line_segment_point_squared(
+  bx,
+  by,
+  cx,
+  cy,
+  px,
+  py
+) {
+  let mx = cx - bx;
+  let my = cy - by;
+  let hx = px - bx;
+  let hy = py - by;
+  let t0 = (mx * hx + my * hy).fdiv(mx ** 2 + my ** 2);
+  if (t0 > 0 && t0 < 1) {
+    return (hx - t0 * mx) ** 2 + (hy - t0 * my) ** 2;
+  } else {
+    return Maximum_Board_Diagonal;
+  }
+}
+
+//     a
+//    /
+//   /   select these neighbors of n
+//  /    in inner angle < PI
+// n_______b
+function new_bor_list(a, b, n) {
+  let aa = a;
+  let bb = b;
+  let nn = n;
+  a = a.vertex;
+  b = b.vertex;
+  n = n.vertex;
+  let ax = a.x - n.x;
+  let ay = a.y - n.y;
+  let bx = b.x - n.x;
+  let by = b.y - n.y;
+  return n.neighbors.filter(el => {
+    if (el == a || el == b) {
+      return false;
+    } else {
+      let ex = el.x - n.x;
+      let ey = el.y - n.y;
+      // if (RBR::xboolean_really_smart_cross_product_2d_with_offset(aa, bb, nn)) {
+      //   return ax * ey > ay * ex && ex * by > ey * bx;
+      // } else {
+      //   return ax * ey < ay * ex && ex * by < ey * bx;
+      // }
+    }
+  });
+}
+
+function full_split_neighbor_list(a, b, n) {
+  let l = [];
+  let r = [];
+  let nx = n.vertex.x;
+  let ny = n.vertex.y;
+  let v1x = a.rx - nx;
+  let v1y = a.ry - ny;
+  let v2x = b.rx - nx;
+  let v2y = b.ry - ny;
+  // let turn = RBR::xboolean_really_smart_cross_product_2d_with_offset(a, b, n);
+  for (let le of n.neighbors) {
+    if (el != a && el != b) {
+      ex = el.rx - nx;
+      ey = el.ry - ny;
+      if (
+        turn
+          ? v1x * ey > v1y * ex && v2x * ey < v2y * ex
+          : v1x * ey > v1y * ex || v2x * ey < v2y * ex
+      ) {
+        l.push(el);
+      } else {
+        r.push(el);
+      }
+    }
+  }
+  return { r, l };
+}
+
 export class Router {
   constructor(b1x, b1y, b2x, b2y) {
-    Vertex.reset_class;
-    this.b1x, this.b1y, this.b2x, (this.b2y = b1x), b1y, b2x, b2y; // corners of the PCB board
-    this.edges_in_cluster = RouterSupport::Hash_with_ordered_array_index.new;
+    Vertex.reset_class();
+    this.b1x = b1x;
+    this.b1y = b1y;
+    this.b2x = b2x;
+    this.b2y = b2y;
+    // this.edges_in_cluster = RouterSupport::Hash_with_ordered_array_index.new;
     this.name_id = 0;
     this.path_ID = 0;
-    x_extent = Math.abs(b2x - b1x);
-    y_extent = Math.abs(b2y - b1y);
-    max_extent = Math.max(x_extent, y_extent);
-    this.pic.scale(Board_Size.fdiv(max_extent), Board_Size.fdiv(max_extent));
-    this.pic.translate(-b1x, -b1y);
-    this.pic.translate(
-      (max_extent - x_extent) * 0.5,
-      (max_extent - y_extent) * 0.5
-    );
-    this.cell = Hash.new;
+    let x_extent = Math.abs(b2x - b1x);
+    let y_extent = Math.abs(b2y - b1y);
+    let max_extent = Math.max(x_extent, y_extent);
+    this.cell = new Map();
   }
 
   next_name() {
     this.name_id += 1;
-    return this.name_id.to_s;
+    return this.name_id;
   }
   /*
 
@@ -322,17 +447,7 @@ export class Router {
 	# (x1,y1)
 	# http://mathworld.wolfram.com/Point-LineDistance2-Dimensional.html
         */
-  distance_line_point(x1, y1, x2, y2, x0, y0) {
-    let x12 = x2 - x1;
-    let y12 = y2 - y1;
-    return Math.abs(x12 * (y1 - y0) - (x1 - x0) * y12) / Math.hypot(x12, y12);
-  }
 
-  distance_line_point_squared(x1, y1, x2, y2, x0, y0) {
-    let x12 = x2 - x1;
-    let y12 = y2 - y1;
-    return (x12 * (y1 - y0) - (x1 - x0) * y12) ** 2 / (x12 ** 2 + y12 ** 2);
-  }
   /*
 
 	#      (c)
@@ -360,18 +475,7 @@ export class Router {
 		return hx ** 2 + hy ** 2
 	}
 
-	normal_distance_line_segment_point_squared(bx, by, cx, cy, px, py)
-		mx = cx - bx
-		my = cy - by
-		hx = px - bx
-		hy = py - by
-		t0 = (mx * hx + my * hy).fdiv(mx ** 2 + my ** 2)
-		if t0 > 0 && t0 < 1
-			(hx - t0 * mx) ** 2 + (hy - t0 * my) ** 2
-		else
-			Maximum_Board_Diagonal 
-		}
-	}
+	
 
 	# Intersection point of two lines in 2 dimensions
 	# http://paulbourke.net/geometry/pointlineplane/
@@ -709,109 +813,14 @@ export class Router {
 	}
 
 
-	#          /neighbor
-	#     a   /
-	# <-------\
-	#       /  \b
-	#      /    \
-	#return neighbors of one side of the path
-	split_neighbor_list(a, b, n)
-		fail unless a.is_a? Region
-		fail unless b.is_a? Region
-		nx = n.vertex.x
-		ny = n.vertex.y
-		v1x = a.vertex.x + a.ox - nx
-		v1y = a.vertex.y + a.oy - ny
-		v2x = b.vertex.x + b.ox - nx
-		v2y = b.vertex.y + b.oy - ny
-		n.neighbors.select{|el|
-			if el == a || el == b
-				false
-			else
-				ex = el.vertex.x + el.ox - nx
-				ey = el.vertex.y + el.oy - ny
-				if RBR::xboolean_really_smart_cross_product_2d_with_offset(a, b, n)
-					v1x * ey > v1y * ex && v2x * ey < v2y * ex
-				else
-					v1x * ey > v1y * ex || v2x * ey < v2y * ex
-				}
-			}
-		}
-	}
 
 
-	full_split_neighbor_list(a, b, n)
-		fail unless a.is_a? Region
-		fail unless b.is_a? Region
-		l = Array.new
-		r = Array.new
-		nx = n.vertex.x
-		ny = n.vertex.y
-		v1x = a.rx - nx
-		v1y = a.ry - ny
-		v2x = b.rx - nx
-		v2y = b.ry - ny
-		turn = RBR::xboolean_really_smart_cross_product_2d_with_offset(a, b, n)
-		n.neighbors.each{|el|
-			if el != a && el != b
-				ex = el.rx - nx
-				ey = el.ry - ny
-				if (turn ? v1x * ey > v1y * ex && v2x * ey < v2y * ex : v1x * ey > v1y * ex || v2x * ey < v2y * ex)
-					l << el
-				else
-					r << el
-				}
-			}
-		}
-		return r, l
-	}
+	
 
         */
 
-  atan2_tangents(a, b, id) {
-    let last_step = a.net(id);
-    let cur_step = b.net(id);
-    let t1 = get_tangents(
-      a.x,
-      a.y,
-      last_step.radius,
-      last_step.rgt,
-      b.x,
-      b.y,
-      cur_step.radius,
-      cur_step.rgt
-    );
-    return Math.atan2(t1[3] - t1[1], t1[2] - t1[0]);
-  }
-
   /*
 
-#     a
-#    /
-#   /   select these neighbors of n
-#  /    in inner angle < PI
-# n_______b
-	new_bor_list(a, b, n)
-		aa, bb, nn = a, b, n
-		a, b, n = a.vertex, b.vertex, n.vertex
-		ax = a.x - n.x
-		ay = a.y - n.y
-		bx = b.x - n.x
-		by = b.y - n.y
-		n.neighbors.select{|el|
-			if el == a || el == b
-				false
-			else
-				ex = el.x - n.x
-				ey = el.y - n.y
-				if RBR::xboolean_really_smart_cross_product_2d_with_offset(aa, bb, nn)
-					ax * ey > ay * ex && ex * by > ey * bx
-				else
-					ax * ey < ay * ex && ex * by < ey * bx
-				}
-			}
-		}
-	}
 
 
 # Explanation of the offset ox, oy used below
@@ -1082,26 +1091,7 @@ return dijkstra(start_node, to, net_desc, 1.5) != nil
 	# https://en.wikibooks.org/wiki/Algorithm_Implementation/Geometry/Tangents_between_two_circles
 	# UGLY: what when tangent does not exist?
         */
-  get_tangents(x1, y1, r1, l1, x2, y2, r2, l2) {
-    if (r1 < 0 || r2 < 0) throw new Error();
-    let d = Math.hypot(x1 - x2, y1 - y2);
-    let vx = (x2 - x1) / d;
-    let vy = (y2 - y1) / d;
-    r2 *= l1 == l2 ? 1 : -1;
-    let c = (r1 - r2) / d;
-    let h = 1 - c ** 2;
-    if (h >= 0) {
-      h = 0;
-    }
-    if (h < 0) {
-      h = Math.sqrt(h) * (l1 ? -1 : 1);
-    } else {
-      h = 0;
-    }
-    nx = vx * c - h * vy;
-    ny = vy * c + h * vx;
-    return [x1 + r1 * nx, y1 + r1 * ny, x2 + r2 * nx, y2 + r2 * ny];
-  }
+
   /*
 
 	smart_replace(step, list)
