@@ -1,0 +1,12 @@
+{
+  "name": "Ruby-PCB-Router",
+  "version": "1.0.0",
+  "main": "index.js",
+  "repository": "https://github.com/StefanSalewski/Ruby-PCB-Router.git",
+  "author": "Tom MacWright <tom@macwright.org>",
+  "license": "MIT",
+  "devDependencies": {
+    "esm": "^3.2.22",
+    "prettier": "^1.17.0"
+  }
+}
