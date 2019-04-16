@@ -70,6 +70,9 @@ export class Region {
   }
   */
   distance_to(other) {
-    Math.hypot(this.vertex.x - other.vertex.x, this.vertex.y - other.vertex.y);
+    return Math.hypot(
+      this.vertex.x - other.vertex.x,
+      this.vertex.y - other.vertex.y
+    );
   }
 }

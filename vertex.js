@@ -1,72 +1,88 @@
+// TODO - globals
+const Pin_Radius = 1000;
+const Clearance = 800;
+
 class Vertex {
-	constructor(x = 0, y = 0, r = Pin_Radius, c = Clearance) {
-		super(x, y)
-		this.num_inets = 0
-		this.via = false
-		this.tradius = 0
-		this.vis_flag = 0
-	  this.id = this.this.id
-		this.cid = -1
-		this.this.id += 1
-		this.radius = this.core = r
-		this.separation = c
-		this.name = ''
-		this.neighbors = Array.new
-		this.incident_nets = Array.new
-		this.attached_nets = Array.new
-}
-
-	reset_class() {
-	this.this.id = this.this.cid = 0
-
-        }
-
-	begin_new_cluster() {
-		this.this.cid += 1
-        }
-
-	add_to_current_cluster() {
-		this.cid = this.this.cid
-        }
-
-	xy() {
-		return {x, y};
-        }
-
-	// Ugly:
-  reset_initial_size() {
-		this.radius, this.separation = this.core, Clearance
-        }
-
-	// Ugly: may be obsolete -- at least it is only an estimation
-	resize() {
-		reset_initial_size
-                for (let step of attached_nets) {
-			net = step.net_desc
-			trace_sep = [this.separation, net.trace_clearance].max
-			this.radius += trace_sep + net.trace_width
-			step.radius = this.radius - net.trace_width * 0.5
-			this.separation = net.trace_clearance
-		}
-        }
-
-	// Ugly:
-        // assume worst case order --> max radius
-	 unfriendly_resize() {
-           cl = attached_nets.map(step => step.net_desc.trace_clearance)
-           this.radius = this.core + attached_nets.map(step => step.net_desc.trace_width).inject(0){|sum, el| sum + el}
-           this.radius += cl.permutation.map(el => (el.push(this.separation))).map{|el| s = 0; el.each_cons(2){|a, b| s += [a,b].max}; s}.max
-		this.separation = cl.push(this.separation).max
-         }
-
-	// Ugly: may be obsolete -- at least it is only an estimation
-  update(s) {
-		net = s.net_desc
-		trace_sep = [this.separation, net.trace_clearance].max
-		this.radius += trace_sep + net.trace_width
-		s.radius = this.radius - net.trace_width * 0.5
-		this.separation = net.trace_clearance
+  constructor(x = 0, y = 0, r = Pin_Radius, c = Clearance) {
+    this.x = x;
+    this.y = y;
+    this.num_inets = 0;
+    this.via = false;
+    this.tradius = 0;
+    this.vis_flag = 0;
+    this.id = Vertex.id;
+    this.cid = -1;
+    Vertex.id += 1;
+    this.radius = this.core = r;
+    this.separation = c;
+    this.name = "";
+    this.neighbors = [];
+    this.incident_nets = [];
+    this.attached_nets = [];
   }
+
+  reset_class() {
+    Vertex.id = Vertex.cid = 0;
+  }
+
+  begin_new_cluster() {
+    Vertex.cid += 1;
+  }
+
+  add_to_current_cluster() {
+    this.cid = Vertex.cid;
+  }
+
+  xy() {
+    return { x, y };
+  }
+
+  // Ugly:
+  reset_initial_size() {
+    this.radius, (this.separation = this.core), Clearance;
+  }
+
+  // Ugly: may be obsolete -- at least it is only an estimation
+  resize() {
+    reset_initial_size;
+    for (let step of attached_nets) {
+      net = step.net_desc;
+      trace_sep = [this.separation, net.trace_clearance].max;
+      this.radius += trace_sep + net.trace_width;
+      step.radius = this.radius - net.trace_width * 0.5;
+      this.separation = net.trace_clearance;
+    }
+  }
+
+  // Ugly:
+  // assume worst case order --> max radius
+  unfriendly_resize() {
+    cl = attached_nets.map(step => step.net_desc.trace_clearance);
+    this.radius =
+      this.core +
+      attached_nets
+        .map(step => step.net_desc.trace_width)
+        .reduce((sum, el) => sum + el, 0);
+    this.radius += cl.permutation
+      .map(el => el.push(this.separation))
+      .map(el => {
+        s = 0;
+        // TODO
+        // el.each_cons(2){|a, b| s += [a,b].max};
+        return s;
+      }).max;
+    this.separation = cl.push(this.separation).max;
+  }
+
+  // Ugly: may be obsolete -- at least it is only an estimation
+  update(s) {
+    net = s.net_desc;
+    trace_sep = [this.separation, net.trace_clearance].max;
+    this.radius += trace_sep + net.trace_width;
+    s.radius = this.radius - net.trace_width * 0.5;
+    this.separation = net.trace_clearance;
+  }
+  /*
 
 	// Ugly: returns step -- may become obsolete
   net(id) {
@@ -124,7 +140,7 @@ class Vertex {
 				if group.length > 1
 					group.reverse! # for testing -- initialy reversing the group should give same result!
 					group.each{|el| el.ref = el}
-					indices = Array.new
+					indices = []
 					group.each{|el| indices << el.index}
 					indices.sort!
 					rel = Hash.new
@@ -176,6 +192,9 @@ class Vertex {
 			}
 			attached_nets.sort_by!{|el| -el.index}
         }
-  }
+	*/
+}
 
+Vertex.id = 0;
 
+export { Vertex };

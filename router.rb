@@ -159,233 +159,233 @@ class NetDescList < Array
 end
 
 # Incident or attached net of a terminal
-class Step
-	attr_accessor :id # id of this net
-	attr_accessor :net_desc
-	attr_accessor :vertex # the terminal we are attached or incident to
-	attr_accessor :prev, :next # terminal
-	attr_accessor :pstep, :nstep # previous and next step
-	attr_accessor :a, :b, :d, :g, :dir # for sorting, a few may be obsolete
-	attr_accessor :radius # radius of arc
-	attr_accessor :score # for sorting attached nets of a terminal by angle 
-	attr_accessor :index # for sorting
-	attr_accessor :ref # also for sorting
-	attr_accessor :rgt # tangents of terminal for this step -- left or right side in forward direction
-	attr_accessor :outer # do we use the outer lane at this terminal
-	attr_accessor :xt # do tangents cross each other -- if so we can collapse this concave step
-	attr_accessor :lr_turn # left or right turn
+## class Step
+## 	attr_accessor :id # id of this net
+## 	attr_accessor :net_desc
+## 	attr_accessor :vertex # the terminal we are attached or incident to
+## 	attr_accessor :prev, :next # terminal
+## 	attr_accessor :pstep, :nstep # previous and next step
+## 	attr_accessor :a, :b, :d, :g, :dir # for sorting, a few may be obsolete
+## 	attr_accessor :radius # radius of arc
+## 	attr_accessor :score # for sorting attached nets of a terminal by angle 
+## 	attr_accessor :index # for sorting
+## 	attr_accessor :ref # also for sorting
+## 	attr_accessor :rgt # tangents of terminal for this step -- left or right side in forward direction
+## 	attr_accessor :outer # do we use the outer lane at this terminal
+## 	attr_accessor :xt # do tangents cross each other -- if so we can collapse this concave step
+## 	attr_accessor :lr_turn # left or right turn
+## 
+## 	def initialize(prev, nxt, id)
+## 		@prev, @next, @id = prev, nxt, id
+## 		@radius = 0 # default for incident net
+## 		@outer = false
+## 	end
+## end
 
-	def initialize(prev, nxt, id)
-		@prev, @next, @id = prev, nxt, id
-		@radius = 0 # default for incident net
-		@outer = false
-	end
-end
-
-class Tex # plain (temporary) terminal (verTex)
-	attr_accessor :x, :y
-	def initialize(x, y)
-		@x, @y = x, y
-	end
-end
+## class Tex # plain (temporary) terminal (verTex)
+## 	attr_accessor :x, :y
+## 	def initialize(x, y)
+## 		@x, @y = x, y
+## 	end
+## end
 
 # Terminal
-class Vertex < CGAL::Vertex
-	@@id = @@cid = 0
-	attr_accessor :id # general unique id number
-	attr_accessor :cid # cluster id; -1 for plain pins, nonnegativ values if vertex is part of a pad/cluster
-	attr_accessor :vis_flag # for debugging, graphical color mark
-	attr_accessor :core # outer copper of pin itself, without attached traces
-	attr_accessor :radius # outer copper of outermost attached trace, equal to core when no attached nets exist
-	attr_accessor :separation # outer clearance of pin itself or of outermost attached trace
-	attr_accessor :neighbors # Vertex/Terminal, the neighbors in the delaunay triangulation
-	attr_accessor :incident_nets # Step, nets incident to this terminal
-	attr_accessor :attached_nets # Step, nets attached to this terminal
-	attr_accessor :name # name of the Terminal, i.e. U7_3 -- pin 3 of IC U7
-	attr_accessor :tradius, :trgt # temporary data
-	attr_accessor :outer # temporary data for routing,
-	attr_accessor :lr_turn # later copied to step
-	attr_accessor :via # vertex is a via
-	attr_accessor :num_inets # how many incident nets should this vertex get
-
-	def initialize(x = 0, y = 0, r = Pin_Radius, c = Clearance)
-		super(x, y)
-		@num_inets = 0
-		@via = false
-		@tradius = 0
-		@vis_flag = 0
-	  @id = @@id
-		@cid = -1
-		@@id += 1
-		@radius = @core = r
-		@separation = c
-		@name = ''
-		@neighbors = Array.new
-		@incident_nets = Array.new
-		@attached_nets = Array.new
-	end
-
-	def self.reset_class
-	@@id = @@cid = 0
-
-	end
-
-	def self.begin_new_cluster # class method!
-		@@cid += 1
-	end
-
-	def add_to_current_cluster
-		@cid = @@cid
-	end
-
-	def xy
-		return x, y
-	end
-
-	# UGLY:
-  def reset_initial_size
-		@radius, @separation = @core, Clearance
-	end
-
-	# UGLY: may be obsolete -- at least it is only an estimation
-	def resize
-		reset_initial_size
-		attached_nets.each{|step|
-			net = step.net_desc
-			trace_sep = [@separation, net.trace_clearance].max
-			@radius += trace_sep + net.trace_width
-			step.radius = @radius - net.trace_width * 0.5
-			@separation = net.trace_clearance
-		}
-	end
-
-	# UGLY:
-	# assume worst case order --> max radius
-	def unfriendly_resize
-		cl = attached_nets.map{|step| step.net_desc.trace_clearance}
-		@radius = @core + attached_nets.map{|step| step.net_desc.trace_width}.inject(0){|sum, el| sum + el}
-		@radius += cl.permutation.map{|el| (el.push(@separation))}.map{|el| s = 0; el.each_cons(2){|a, b| s += [a,b].max}; s}.max
-		@separation = cl.push(@separation).max
-	end
-
-	# UGLY: may be obsolete -- at least it is only an estimation
-  def update(s)
-		net = s.net_desc
-		trace_sep = [@separation, net.trace_clearance].max
-		@radius += trace_sep + net.trace_width
-		s.radius = @radius - net.trace_width * 0.5
-		@separation = net.trace_clearance
-	end
-
-	# UGLY: returns step -- may become obsolete
-  def net(id)
-		incident_nets.each{|s| return s if s.id == id}
- 		attached_nets.each{|s| return s if s.id == id}
-		return nil
-	end
-
-  # UGLY: delete step -- currently we need this, but we should try to avoid it, at least the expensive resize operation
-	def new_delete_net(step)
-		incident_nets.delete_if{|s| step == s}
-		attached_nets.delete_if{|s| step == s}
-		resize
-	end
-
-	# UGLY:
-	def _full_angle(s)
-		return nil unless s.next && s.prev
-		v = s.vertex
-		d = Math.atan2(s.next.y - v.y, s.next.x - v.x) - Math.atan2(v.y - s.prev.y, v.x - s.prev.x)
-		if d < -Math::PI
-		 	d += 2 * Math::PI
-		elsif d > Math::PI
-			d -= 2 * Math::PI
-		end
-		return d
-	end
-
-	# UGLY: check and improve
-	def sort_attached_nets # by angle of total trace
-		unless attached_nets.length < 2
-			attached_nets.each{|n|
-				fail unless n.vertex == self
-				#n.index = _tangents_full_angle(n) # we may need the tangents angle?
-				n.index = _full_angle(n) * (n.rgt ? 1 : -1)
-			}
-			attached_nets.sort_by!{|n| n.index}
-			attached_nets.each_with_index{|n, i| n.index = i}
-			shash = Hash.new
-			attached_nets.each{|n| # group attached nets with same angle (overlapping)
-				l = n.prev
-				r = n.next
-				n.net_desc.flag = 1
-				if shash.has_key?([l, r])
-					shash[[l, r]] << n
-				elsif shash.has_key?([r, l])
-					n.net_desc.flag = -1 # inverted direction
-					shash[[r, l]] << n
-				else
-					shash[[l, r]] = [n]
-				end
-			}
-			shash.each_value{|group| # fine sort each group by following the traces
-				if group.length > 1
-					group.reverse! # for testing -- initialy reversing the group should give same result!
-					group.each{|el| el.ref = el}
-					indices = Array.new
-					group.each{|el| indices << el.index}
-					indices.sort!
-					rel = Hash.new
-					[-1, 1].each{|direction|
-						gr = group.dup
-						final = true # for first direction we may get only a preliminary order?
-						while gr.length > 1
-							gr.map!{|el| (el.net_desc.flag == direction ? el.pstep : el.nstep)} # walk in one direction
-							gr.each{|el| el.ref = (el.net_desc.flag == direction ? el.nstep.ref : el.pstep.ref)}
-							gr.each{|el| el.score = _full_angle(el)}
-							unresolved_combinations = false
-							gr.combination(2).each{|el|
-								a, b = *el
-								relation = rel[[a.ref, b.ref]]
-								if !relation || relation.abs < 2
-									if !a.score
-										c = ((b.rgt == b.ref.rgt) ? 1 : -1)
-									elsif !b.score
-										c = ((a.rgt == a.ref.rgt) ? -1 : 1)
-									else
-										if (a.score * a.net_desc.flag - b.score * b.net_desc.flag).abs < 1e-6
-										#if ((a.score - b.score).abs < 1e-6) || ((a.score - b.score).abs < 1e-6)
-											c = 0
-										else
-											#c = ((a.score * (a.rgt ? 1 : -1) * ((a.rgt == a.ref.rgt) ? 1 : -1)) <=> (b.score * (b.rgt ? 1 : -1) * ((b.rgt == b.ref.rgt) ? 1 : -1)))
-											c = ((a.score * (a.ref.rgt ? 1 : -1)) <=> (b.score * (b.ref.rgt ? 1 : -1))) # same as above
-										end
-									end
-									if c != 0
-										if  final # indicate final relation
-											c *= 2
-										end
-											rel[[a.ref, b.ref]] = c
-											rel[[b.ref, a.ref]] = -c
-									else
-										unresolved_combinations = true
-									end
-								end
-							}
-							break unless unresolved_combinations
-							gr.keep_if{|el| el.next && el.prev}
-						end
-						fail if unresolved_combinations # we should get at least a preliminary relation
-						break if final # indeed always -- we have no preliminary relations
-					}
-					group.sort!{|a, b| rel[[a, b]]} # do we need rel[[a, b] <=> 0 to ensure -1,0,1 in block? 
-					group.each{|el| el.index = indices.shift}
-				end
-			}
-			attached_nets.sort_by!{|el| -el.index}
-		end
-	end
-end
+## class Vertex < CGAL::Vertex
+## 	@@id = @@cid = 0
+## 	attr_accessor :id # general unique id number
+## 	attr_accessor :cid # cluster id; -1 for plain pins, nonnegativ values if vertex is part of a pad/cluster
+## 	attr_accessor :vis_flag # for debugging, graphical color mark
+## 	attr_accessor :core # outer copper of pin itself, without attached traces
+## 	attr_accessor :radius # outer copper of outermost attached trace, equal to core when no attached nets exist
+## 	attr_accessor :separation # outer clearance of pin itself or of outermost attached trace
+## 	attr_accessor :neighbors # Vertex/Terminal, the neighbors in the delaunay triangulation
+## 	attr_accessor :incident_nets # Step, nets incident to this terminal
+## 	attr_accessor :attached_nets # Step, nets attached to this terminal
+## 	attr_accessor :name # name of the Terminal, i.e. U7_3 -- pin 3 of IC U7
+## 	attr_accessor :tradius, :trgt # temporary data
+## 	attr_accessor :outer # temporary data for routing,
+## 	attr_accessor :lr_turn # later copied to step
+## 	attr_accessor :via # vertex is a via
+## 	attr_accessor :num_inets # how many incident nets should this vertex get
+## 
+## 	def initialize(x = 0, y = 0, r = Pin_Radius, c = Clearance)
+## 		super(x, y)
+## 		@num_inets = 0
+## 		@via = false
+## 		@tradius = 0
+## 		@vis_flag = 0
+## 	  @id = @@id
+## 		@cid = -1
+## 		@@id += 1
+## 		@radius = @core = r
+## 		@separation = c
+## 		@name = ''
+## 		@neighbors = Array.new
+## 		@incident_nets = Array.new
+## 		@attached_nets = Array.new
+## 	end
+## 
+## 	def self.reset_class
+## 	@@id = @@cid = 0
+## 
+## 	end
+## 
+## 	def self.begin_new_cluster # class method!
+## 		@@cid += 1
+## 	end
+## 
+## 	def add_to_current_cluster
+## 		@cid = @@cid
+## 	end
+## 
+## 	def xy
+## 		return x, y
+## 	end
+## 
+## 	# UGLY:
+##   def reset_initial_size
+## 		@radius, @separation = @core, Clearance
+## 	end
+## 
+## 	# UGLY: may be obsolete -- at least it is only an estimation
+## 	def resize
+## 		reset_initial_size
+## 		attached_nets.each{|step|
+## 			net = step.net_desc
+## 			trace_sep = [@separation, net.trace_clearance].max
+## 			@radius += trace_sep + net.trace_width
+## 			step.radius = @radius - net.trace_width * 0.5
+## 			@separation = net.trace_clearance
+## 		}
+## 	end
+## 
+## 	# UGLY:
+## 	# assume worst case order --> max radius
+## 	def unfriendly_resize
+## 		cl = attached_nets.map{|step| step.net_desc.trace_clearance}
+## 		@radius = @core + attached_nets.map{|step| step.net_desc.trace_width}.inject(0){|sum, el| sum + el}
+## 		@radius += cl.permutation.map{|el| (el.push(@separation))}.map{|el| s = 0; el.each_cons(2){|a, b| s += [a,b].max}; s}.max
+## 		@separation = cl.push(@separation).max
+## 	end
+## 
+## 	# UGLY: may be obsolete -- at least it is only an estimation
+##   def update(s)
+## 		net = s.net_desc
+## 		trace_sep = [@separation, net.trace_clearance].max
+## 		@radius += trace_sep + net.trace_width
+## 		s.radius = @radius - net.trace_width * 0.5
+## 		@separation = net.trace_clearance
+## 	end
+## 
+## 	# UGLY: returns step -- may become obsolete
+##   def net(id)
+## 		incident_nets.each{|s| return s if s.id == id}
+##  		attached_nets.each{|s| return s if s.id == id}
+## 		return nil
+## 	end
+## 
+##   # UGLY: delete step -- currently we need this, but we should try to avoid it, at least the expensive resize operation
+## 	def new_delete_net(step)
+## 		incident_nets.delete_if{|s| step == s}
+## 		attached_nets.delete_if{|s| step == s}
+## 		resize
+## 	end
+## 
+## 	# UGLY:
+## 	def _full_angle(s)
+## 		return nil unless s.next && s.prev
+## 		v = s.vertex
+## 		d = Math.atan2(s.next.y - v.y, s.next.x - v.x) - Math.atan2(v.y - s.prev.y, v.x - s.prev.x)
+## 		if d < -Math::PI
+## 		 	d += 2 * Math::PI
+## 		elsif d > Math::PI
+## 			d -= 2 * Math::PI
+## 		end
+## 		return d
+## 	end
+## 
+## 	# UGLY: check and improve
+## 	def sort_attached_nets # by angle of total trace
+## 		unless attached_nets.length < 2
+## 			attached_nets.each{|n|
+## 				fail unless n.vertex == self
+## 				#n.index = _tangents_full_angle(n) # we may need the tangents angle?
+## 				n.index = _full_angle(n) * (n.rgt ? 1 : -1)
+## 			}
+## 			attached_nets.sort_by!{|n| n.index}
+## 			attached_nets.each_with_index{|n, i| n.index = i}
+## 			shash = Hash.new
+## 			attached_nets.each{|n| # group attached nets with same angle (overlapping)
+## 				l = n.prev
+## 				r = n.next
+## 				n.net_desc.flag = 1
+## 				if shash.has_key?([l, r])
+## 					shash[[l, r]] << n
+## 				elsif shash.has_key?([r, l])
+## 					n.net_desc.flag = -1 # inverted direction
+## 					shash[[r, l]] << n
+## 				else
+## 					shash[[l, r]] = [n]
+## 				end
+## 			}
+## 			shash.each_value{|group| # fine sort each group by following the traces
+## 				if group.length > 1
+## 					group.reverse! # for testing -- initialy reversing the group should give same result!
+## 					group.each{|el| el.ref = el}
+## 					indices = Array.new
+## 					group.each{|el| indices << el.index}
+## 					indices.sort!
+## 					rel = Hash.new
+## 					[-1, 1].each{|direction|
+## 						gr = group.dup
+## 						final = true # for first direction we may get only a preliminary order?
+## 						while gr.length > 1
+## 							gr.map!{|el| (el.net_desc.flag == direction ? el.pstep : el.nstep)} # walk in one direction
+## 							gr.each{|el| el.ref = (el.net_desc.flag == direction ? el.nstep.ref : el.pstep.ref)}
+## 							gr.each{|el| el.score = _full_angle(el)}
+## 							unresolved_combinations = false
+## 							gr.combination(2).each{|el|
+## 								a, b = *el
+## 								relation = rel[[a.ref, b.ref]]
+## 								if !relation || relation.abs < 2
+## 									if !a.score
+## 										c = ((b.rgt == b.ref.rgt) ? 1 : -1)
+## 									elsif !b.score
+## 										c = ((a.rgt == a.ref.rgt) ? -1 : 1)
+## 									else
+## 										if (a.score * a.net_desc.flag - b.score * b.net_desc.flag).abs < 1e-6
+## 										#if ((a.score - b.score).abs < 1e-6) || ((a.score - b.score).abs < 1e-6)
+## 											c = 0
+## 										else
+## 											#c = ((a.score * (a.rgt ? 1 : -1) * ((a.rgt == a.ref.rgt) ? 1 : -1)) <=> (b.score * (b.rgt ? 1 : -1) * ((b.rgt == b.ref.rgt) ? 1 : -1)))
+## 											c = ((a.score * (a.ref.rgt ? 1 : -1)) <=> (b.score * (b.ref.rgt ? 1 : -1))) # same as above
+## 										end
+## 									end
+## 									if c != 0
+## 										if  final # indicate final relation
+## 											c *= 2
+## 										end
+## 											rel[[a.ref, b.ref]] = c
+## 											rel[[b.ref, a.ref]] = -c
+## 									else
+## 										unresolved_combinations = true
+## 									end
+## 								end
+## 							}
+## 							break unless unresolved_combinations
+## 							gr.keep_if{|el| el.next && el.prev}
+## 						end
+## 						fail if unresolved_combinations # we should get at least a preliminary relation
+## 						break if final # indeed always -- we have no preliminary relations
+## 					}
+## 					group.sort!{|a, b| rel[[a, b]]} # do we need rel[[a, b] <=> 0 to ensure -1,0,1 in block? 
+## 					group.each{|el| el.index = indices.shift}
+## 				end
+## 			}
+## 			attached_nets.sort_by!{|el| -el.index}
+## 		end
+## 	end
+## end
 
 #   \|/       \|/
 #    |        /\
@@ -397,126 +397,126 @@ end
 # problem: first and last terminal.
 # Current solution: Use a hash to store forbidden paths for these terminals
 # 
-class Region
-	attr_accessor :vertex, :neighbors, :incident, :outer
-	attr_accessor :g, :ox, :oy
-	attr_accessor :rx, :ry
-	attr_accessor :a # for sorting
-	attr_accessor :lr_turn
-	attr_accessor :idirs
-	attr_accessor :odirs
-
-  def initialize(v)
-		@g = 1
-		@ox = @oy = 0
-		@vertex = v
-		@rx = v.x
-		@ry = v.y
-		@neighbors = Array.new
-		@incident = true
-		@outer = false
-		@idirs = Array.new
-		@odirs = Array.new
-	end
-
-	def qbors(old)
-		if old
-			ox = self.vertex.x
-			oy = self.vertex.y
-			ax = old.rx - ox
-			ay = old.ry - oy
-			@neighbors.each{|el|
-				next if el == old
-				bx = el.rx - ox
-				by = el.ry - oy
-				fail if old.vertex == el.vertex && self.idirs.empty?
-				turn = RBR::xboolean_really_smart_cross_product_2d_with_offset(old, el, self)
-				bx = el.rx - ox
-				by = el.ry - oy
-				inner = true 
-				outer = self.incident
-				unless self.odirs.empty?
-					outer = true
-					self.odirs.each{|zx, zy|
-						if turn
-							j = ax * zy >= ay * zx && bx * zy <= by * zx # do we need = here?
-						else
-							j = ax * zy <= ay * zx && bx * zy >= by * zx
-						end
-						break unless (outer &&= j)
-					}
-					inner = !outer
-				end
-				self.idirs.each{|zx, zy|
-					if turn
-						j = ax * zy >= ay * zx && bx * zy <= by * zx # do we need = here?
-					else
-						j = ax * zy <= ay * zx && bx * zy >= by * zx
-					end
-					if j
-						inner = false
-					else
-						outer = false
-					end
-					next unless inner || outer
-				}
-				yield [el, inner, outer]
-			}
-		else
-			@neighbors.each{|el| yield [el, true, true]}
-		end
-	end
-
-	def distance_to(other)
-		Math.hypot(@vertex.x - other.vertex.x, @vertex.y - other.vertex.y)
-	end
-end
+## class Region
+## 	attr_accessor :vertex, :neighbors, :incident, :outer
+## 	attr_accessor :g, :ox, :oy
+## 	attr_accessor :rx, :ry
+## 	attr_accessor :a # for sorting
+## 	attr_accessor :lr_turn
+## 	attr_accessor :idirs
+## 	attr_accessor :odirs
+## 
+##   def initialize(v)
+## 		@g = 1
+## 		@ox = @oy = 0
+## 		@vertex = v
+## 		@rx = v.x
+## 		@ry = v.y
+## 		@neighbors = Array.new
+## 		@incident = true
+## 		@outer = false
+## 		@idirs = Array.new
+## 		@odirs = Array.new
+## 	end
+## 
+## 	def qbors(old)
+## 		if old
+## 			ox = self.vertex.x
+## 			oy = self.vertex.y
+## 			ax = old.rx - ox
+## 			ay = old.ry - oy
+## 			@neighbors.each{|el|
+## 				next if el == old
+## 				bx = el.rx - ox
+## 				by = el.ry - oy
+## 				fail if old.vertex == el.vertex && self.idirs.empty?
+## 				turn = RBR::xboolean_really_smart_cross_product_2d_with_offset(old, el, self)
+## 				bx = el.rx - ox
+## 				by = el.ry - oy
+## 				inner = true 
+## 				outer = self.incident
+## 				unless self.odirs.empty?
+## 					outer = true
+## 					self.odirs.each{|zx, zy|
+## 						if turn
+## 							j = ax * zy >= ay * zx && bx * zy <= by * zx # do we need = here?
+## 						else
+## 							j = ax * zy <= ay * zx && bx * zy >= by * zx
+## 						end
+## 						break unless (outer &&= j)
+## 					}
+## 					inner = !outer
+## 				end
+## 				self.idirs.each{|zx, zy|
+## 					if turn
+## 						j = ax * zy >= ay * zx && bx * zy <= by * zx # do we need = here?
+## 					else
+## 						j = ax * zy <= ay * zx && bx * zy >= by * zx
+## 					end
+## 					if j
+## 						inner = false
+## 					else
+## 						outer = false
+## 					end
+## 					next unless inner || outer
+## 				}
+## 				yield [el, inner, outer]
+## 			}
+## 		else
+## 			@neighbors.each{|el| yield [el, true, true]}
+## 		end
+## 	end
+## 
+## 	def distance_to(other)
+## 		Math.hypot(@vertex.x - other.vertex.x, @vertex.y - other.vertex.y)
+## 	end
+## end
 
 # note: the flow depends on the order of the traces -- trace with less clearance adjanced to trace with much clearance?
-class Cut
-  attr_accessor :cap # vertex distance
-	attr_accessor :free_cap # cap - vertex copper - copper of passing traces
-	attr_accessor :cv1, :cv2 # clearance of the two adjanced vertices
-	attr_accessor :cl # array of clearances for each trace passing -- order is important for overal space occupied
-  def initialize(v1, v2)
-		@cap = Math::hypot(v1.x - v2.x, v1.y - v2.y)
-		@free_cap = @cap - v1.core - v2.core
-		@cv1 = Clearance # UGLY:
-		@cv2 = Clearance
-		@cl = Array.new
-	end
-
-	# return Maximum_Board_Diagonal (MBD) when there is no space available, or
-	# a measure for squeeze -- multiple of Average_Via_Size going to zero if there is much space available
-	def squeeze_strength(trace_width, trace_clearance)
-		if @cl.empty?
-			s = ((@cv1 < @cv2 && @cv1 < trace_clearance) ? @cv2 + trace_clearance : (@cv2 < trace_clearance ? @cv1 + trace_clearance : @cv1 + @cv2))
-		else
-			@cl.push(trace_clearance)
-			#s2 = cl.permutation.map{|el| (el.unshift(@cv1).push(@cv2))}.map{|el| s = 0; el.each_cons(2){|a, b| s += [a, b].max}; s}.max
-			# ss = cl.permutation.map{|el| el.unshift(@cv1).push(@cv2); s = 0; el.each_cons(2){|a, b| s += [a, b].max}; s}.max # slow
-			# faster!
-			ll = @cl.length / 2
-			hhh = @cl.sort.reverse[0..ll] * 2
-			hhh.pop if @cl.length.even?
-			hhh.push(@cv1)
-			hhh.push(@cv2)
-			hhh.sort!
-			hhh.shift(2)
-			s = hhh.inject(0){|sum, v| sum + v}
-			### fail unless s == ss
-			@cl.pop
-		end
-		s = @free_cap - trace_width - s
-		s < 0 ? MBD : 10 * AVD * ATW / (ATW + s * 2)
-	end
-
-	# we actually route that trace through this cut
-	def use(trace_width, trace_clearance)
-		@free_cap -= trace_width
-		@cl << trace_clearance
-	end
-end
+## class Cut
+##   attr_accessor :cap # vertex distance
+## 	attr_accessor :free_cap # cap - vertex copper - copper of passing traces
+## 	attr_accessor :cv1, :cv2 # clearance of the two adjanced vertices
+## 	attr_accessor :cl # array of clearances for each trace passing -- order is important for overal space occupied
+##   def initialize(v1, v2)
+## 		@cap = Math::hypot(v1.x - v2.x, v1.y - v2.y)
+## 		@free_cap = @cap - v1.core - v2.core
+## 		@cv1 = Clearance # UGLY:
+## 		@cv2 = Clearance
+## 		@cl = Array.new
+## 	end
+## 
+## 	# return Maximum_Board_Diagonal (MBD) when there is no space available, or
+## 	# a measure for squeeze -- multiple of Average_Via_Size going to zero if there is much space available
+## 	def squeeze_strength(trace_width, trace_clearance)
+## 		if @cl.empty?
+## 			s = ((@cv1 < @cv2 && @cv1 < trace_clearance) ? @cv2 + trace_clearance : (@cv2 < trace_clearance ? @cv1 + trace_clearance : @cv1 + @cv2))
+## 		else
+## 			@cl.push(trace_clearance)
+## 			#s2 = cl.permutation.map{|el| (el.unshift(@cv1).push(@cv2))}.map{|el| s = 0; el.each_cons(2){|a, b| s += [a, b].max}; s}.max
+## 			# ss = cl.permutation.map{|el| el.unshift(@cv1).push(@cv2); s = 0; el.each_cons(2){|a, b| s += [a, b].max}; s}.max # slow
+## 			# faster!
+## 			ll = @cl.length / 2
+## 			hhh = @cl.sort.reverse[0..ll] * 2
+## 			hhh.pop if @cl.length.even?
+## 			hhh.push(@cv1)
+## 			hhh.push(@cv2)
+## 			hhh.sort!
+## 			hhh.shift(2)
+## 			s = hhh.inject(0){|sum, v| sum + v}
+## 			### fail unless s == ss
+## 			@cl.pop
+## 		end
+## 		s = @free_cap - trace_width - s
+## 		s < 0 ? MBD : 10 * AVD * ATW / (ATW + s * 2)
+## 	end
+## 
+## 	# we actually route that trace through this cut
+## 	def use(trace_width, trace_clearance)
+## 		@free_cap -= trace_width
+## 		@cl << trace_clearance
+## 	end
+## end
 
 # we put only one pin in each cell -- for testing
 CS = 3 * Pin_Radius
