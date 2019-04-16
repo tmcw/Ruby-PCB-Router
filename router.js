@@ -490,7 +490,7 @@ export class Router {
 
 	P_IN = 1; P_ON = 0; P_OUT = -1; COLLINEAR = -2 
 	# see http://en.wikipedia.org/wiki/Barycentric_coordinates_%28mathematics%29
-	unused_point_in_triangle(x1, y1, x2, y2, x3, y3, x, y)
+	point_in_triangle(x1, y1, x2, y2, x3, y3, x, y)
 		d  =  (y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3)
 		return COLLINEAR if d == 0 # maybe check if x,y is ... -- currently we do not care
 		l1 = ((y2 - y3) * (x - x3) + (x3 - x2) * (y - y3)) / d
@@ -730,7 +730,7 @@ export class Router {
 						else
 							unless lcuts.empty? # can (only) occur for outer vertices of PCB rectangle
 								nv = lcuts.min_by{|el| this.newcuts[v.vertex, el].cap}
- 								if unused_point_in_triangle(*u.vertex.xy, *v.vertex.xy, *w.vertex.xy, *nv.xy) >= 0 # P_IN = 1; P_ON = 0; P_OUT = -1; COLLINEAR = -2
+ 								if point_in_triangle(*u.vertex.xy, *v.vertex.xy, *w.vertex.xy, *nv.xy) >= 0 # P_IN = 1; P_ON = 0; P_OUT = -1; COLLINEAR = -2
 									nd = Math.hypot(u.vertex.x - nv.x, u.vertex.y - nv.y) + Math.hypot(w.vertex.x - nv.x, w.vertex.y - nv.y)
 								else
 									nd = Math.hypot(u.vertex.x - w.vertex.x, u.vertex.y - w.vertex.y)
