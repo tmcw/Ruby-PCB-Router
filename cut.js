@@ -1,5 +1,6 @@
 // TODO
 const Clearance = 800;
+const MBD = 2 ** 30 - 2 ** 24; // something like our own Infinity
 
 // note: the flow depends on the order of the traces -- trace with less clearance adjanced to trace with much clearance?
 export class Cut {
@@ -14,7 +15,8 @@ export class Cut {
   // return Maximum_Board_Diagonal (MBD) when there is no space available, or
   // a measure for squeeze -- multiple of Average_Via_Size going to zero if there is much space available
   squeeze_strength(trace_width, trace_clearance) {
-    if (cl.empty) {
+    let s;
+    if (this.cl.length === 0) {
       s =
         this.cv1 < this.cv2 && this.cv1 < trace_clearance
           ? this.cv2 + trace_clearance
@@ -24,8 +26,9 @@ export class Cut {
     } else {
       this.cl.push(trace_clearance);
       let ll = this.cl.length / 2;
-      // TODO
-      let hhh = this.cl.sort.reverse[(0).ll] * 2;
+      let hhh = this.cl.sort((a, b) => a - b).reverse();
+      // TODO: this has a * 2 in the original. is that really the intent?
+      hhh.push(...hhh);
       if (this.cl.length % 2 == 0) {
         hhh.pop();
       }
