@@ -147,8 +147,8 @@ export class Router {
 	}
 
   finish_init(rnd_test = false)
-		this.vertices = Array.new # maybe later we do not need this array, we have this.cdt.each{}
-		this.regions = Array.new
+		this.vertices = [] # maybe later we do not need this array, we have this.cdt.each{}
+		this.regions = []
 		this.cdt.each{|v|
 			this.vertices << v
 			this.regions << Region.new(v)
@@ -273,123 +273,104 @@ export class Router {
 			this.file.write("Arc[#{x.round} #{y.round} #{r.round} #{r.round} #{width.round} #{Clearance.round} #{pcb_start_angle} #{pcb_delta_angle} \"\"]\n")
 		}
 	}
-
-# http://www.faqs.org/faqs/graphics/algorithms-faq/
-# http://www.ecse.rpi.edu/Homepages/wrf/Research/Short_Notes/pnpoly.html
-# int pnpoly(int nvert, float *vertx, float *verty, float testx, float testy)
-# {
-#   int i, j, c = 0;
-#   for (i = 0, j = nvert-1; i < nvert; j = i++) {
-#     if ( ((verty[i]>testy) != (verty[j]>testy)) &&
-# 	 (testx < (vertx[j]-vertx[i]) * (testy-verty[i]) / (verty[j]-verty[i]) + vertx[i]) )
-#        c = !c;
-#   }
-#   return c;
-# }
-#
-# input: array of vertices
-# result: the vertices inside the polygon (or on the border?)
-	vertices_in_polygon(p_vertices, test_vertices)
-		res = Array.new
-		nm1 = p_vertices.length - 1
-		test_vertices.each{|tp|
-			ty = tp.y
-			i = 0
-			j = nm1
-			c = false
-			while i <= nm1
-        if ((((p_vertices[i].y <= ty) && (ty < p_vertices[j].y)) ||
-             ((p_vertices[j].y <= ty) && (ty < p_vertices[i].y))) &&
-            (tp.x < (p_vertices[j].x - p_vertices[i].x) * (ty - p_vertices[i].y) / (p_vertices[j].y - p_vertices[i].y) + p_vertices[i].x))
-					 c = !c
-				}
-				j = i
-				i += 1
-			}
-			res << tp if c
-		}
-		res
-	}
-
+  */
+  new_convex_vertices(vertices, prev, nxt, hv1, hv2) {
+    // fail if vertices.include?(prev) || vertices.include?(nxt)
+    if (vertices.length === 0) return vertices;
+    let [x1, y1, x2, y2] = get_tangents(
+      prev.x,
+      prev.y,
+      prev.tradius,
+      prev.trgt,
+      nxt.x,
+      nxt.y,
+      nxt.tradius,
+      nxt.trgt
+    );
+    let v1 = Vertex.new(x1, y1);
+    let v2 = Vertex.new(x2, y2);
+    vertices.push(v1, v2, hv1, hv2);
+    // let ag = CGAL::Apollonius_graph.new;
+    for (let v of vertices) {
+      ag.insert(v, v.x, v.y, v.tradius);
+    }
+    x2 -= x1;
+    y2 -= y1;
+    // (ag.convex_hull_array - [v1, v2, hv1, hv2]).sort_by{|el| (el.x - x1) * x2 + (el.y - y1) * y2}
+  }
   /*
-	new_convex_vertices(vertices, prev, nxt, hv1, hv2)
-		fail if vertices.include?(prev) || vertices.include?(nxt)
-		return vertices if vertices.empty?
-		x1, y1, x2, y2 = get_tangents(prev.x, prev.y, prev.tradius, prev.trgt, nxt.x, nxt.y, nxt.tradius, nxt.trgt)
-		v1 = Vertex.new(x1, y1)
-		v2 = Vertex.new(x2, y2)
-		vertices << v1 << v2 << hv1 << hv2
-		ag = CGAL::Apollonius_graph.new
-		vertices.each{|v| ag.insert(v, v.x, v.y, v.tradius)}
-		x2 -= x1
-		y2 -= y1
-		(ag.convex_hull_array - [v1, v2, hv1, hv2]).sort_by{|el| (el.x - x1) * x2 + (el.y - y1) * y2}
-	}
 
-	# https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm
-	# u --> v --> w
-	# Dijkstra's shortest path search -- along the edges of the constrained delaunay triangulation
-	#
-	#        v-----w
-	#  \    / \
-	#   \  /   \ lcut
-	#    u      x
-	#
-	# Generally we route at the inner lane -- doing so ensures that traces never cross.
-	# When the turn at u is opposite to the turn at v then we have to cross
-	# the line segment connecting u and v -- we need space for that.
-	# When we take the inner lane at v, then the lcut to vertex x is a restriction. 
-	# When there starts an incident net in the inner lane this path
-	# is blocked, so we can use the outer lane, there can exist no inner
-	# crossing lanes. If we take the outer lane at v and inner lane at u,
-	# we have not to cross the line segment connection u and v and so on...
-	#
-	# So for this variant of Dijkstra's shortest path search we have not only to
-	# record the previous node, but also the lane (inner/outer) we took, because
-	# the next node may be only reachable when we do not have to cross a line
-	# segment between current and next node. We also record the parent of the previous
-	# node (u) -- because we have to check if there exists a terminal too close to u-v.
-	#
-	# So the key for the Fibonacci_Queue and parents and distances is not simple
-	# a node, but a tripel of node, previous node and lane.
-	#
-	# Update October 2015: Now we generally use outer lanes also -- for that qbors()
-	# function was changed. We still have to see if outer lanes really give benefit. 
-	#
-	# Default unit of Size is 0.01 mil
-	# We will put this into a config file later
+  // https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm
+  // u --> v --> w
+  // Dijkstra's shortest path search -- along the edges of the constrained delaunay triangulation
+  //
+  //        v-----w
+  //  \    / \
+  //   \  /   \ lcut
+  //    u      x
+  //
+  // Generally we route at the inner lane -- doing so ensures that traces never cross.
+  // When the turn at u is opposite to the turn at v then we have to cross
+  // the line segment connecting u and v -- we need space for that.
+  // When we take the inner lane at v, then the lcut to vertex x is a restriction.
+  // When there starts an incident net in the inner lane this path
+  // is blocked, so we can use the outer lane, there can exist no inner
+  // crossing lanes. If we take the outer lane at v and inner lane at u,
+  // we have not to cross the line segment connection u and v and so on...
+  //
+  // So for this variant of Dijkstra's shortest path search we have not only to
+  // record the previous node, but also the lane (inner/outer) we took, because
+  // the next node may be only reachable when we do not have to cross a line
+  // segment between current and next node. We also record the parent of the previous
+  // node (u) -- because we have to check if there exists a terminal too close to u-v.
+  //
+  // So the key for the Fibonacci_Queue and parents and distances is not simple
+  // a node, but a tripel of node, previous node and lane.
+  //
+  // Update October 2015: Now we generally use outer lanes also -- for that qbors()
+  // function was changed. We still have to see if outer lanes really give benefit.
+  //
+  // Default unit of Size is 0.01 mil
+  // We will put this into a config file later
+  //
+  //	TODO: Check backside of first and last vertex of each path -- i.e. when traces
+  //	are thicker than pad or pin. Maybe we should leave that for manually fixing.
+  //	Ckecking is not really easy, and automatic fixing is some work.
+  //
+  //	(1.) Note: the cm arroach can fail for this case
+  //	(cm of neightbors of x is v, so distance to v is zero
+  //
+  //    /____    x  /____
+  //   /\        /\/
+  //   ||        || v
+          //   */
 
-	#	TODO: Check backside of first and last vertex of each path -- i.e. when traces
-	#	are thicker than pad or pin. Maybe we should leave that for manually fixing.
-	#	Ckecking is not really easy, and automatic fixing is some work.
-	#
-	#	(1.) Note: the cm arroach can fail for this case 
-	#	(cm of neightbors of x is v, so distance to v is zero 
-	#               
-	#    /____    x  /____
-	#   /\        /\/   
-	#   ||        || v
-
-	dijkstra(start_node, }_node_name, net_desc, max_detour_factor = 2)
+  dijkstra(start_node, end_node_name, net_desc, max_detour_factor = 2) {
+    /*
 		fail unless start_node.is_a? Region
-		fail unless }_node_name.is_a? String
+		fail unless end_node_name.is_a? String
 		fail unless net_desc.is_a? NetDesc
-		fail if }_node_name.empty?
-		fail if start_node.vertex.name == }_node_name
-		q = BOOST::Fibonacci_Queue.new(-1, Float::INFINITY) # -1 for minimum queue
-		distances = Hash.new
-		parents = Hash.new
-		outer_lane = Hash.new # record if we used inner or outer trail
-		distances[[start_node, nil, true]] = 0 # fake left and right turn before start node
-		distances[[start_node, nil, false]] = 0
-		x, y = start_node.vertex.xy
-		start_cid = start_node.vertex.cid # cluster id, -1 means no pad/cluster but plain pin
-		start_node.qbors(nil) do |w, use_inner, use_outer| # initial steps are never blocked, so fill them in
-			u = [w, start_node, false] # for rgt == true and rgt == false, so we can continue in all directions
-			v = [w, start_node, true]
-			q[u] = q[v]	= ((start_cid != -1) && (w.vertex.cid == start_cid) ? 0 : Math.hypot(w.vertex.x - x, w.vertex.y - y))
-			parents[u] = parents[v] = [start_node, nil, false] # arbitrary u and rgt for last two array elements
-		}
+		fail if end_node_name.empty?
+		fail if start_node.vertex.name == end_node_name
+                  */
+    // q = BOOST::Fibonacci_Queue.new(-1, Float::INFINITY) // -1 for minimum queue
+    let distances = new Map();
+    let parents = new Map();
+    let outer_lane = new Map(); // record if we used inner or outer trail
+    //  distances[[start_node, nil, true]] = 0 // fake left and right turn before start node
+    //distances[[start_node, nil, false]] = 0
+    let [x, y] = start_node.vertex.xy;
+    let start_cid = start_node.vertex.cid; // cluster id, -1 means no pad/cluster but plain pin
+    // start_node.qbors(nil) do |w, use_inner, use_outer| # initial steps are never blocked, so fill them in
+    let u = [w, start_node, false]; // for rgt == true and rgt == false, so we can continue in all directions
+    let v = [w, start_node, true];
+    q[u] = q[v] =
+      start_cid != -1 && w.vertex.cid == start_cid
+        ? 0
+        : Math.hypot(w.vertex.x - x, w.vertex.y - y);
+    parents[u] = parents[v] = [start_node, nil, false]; // arbitrary u and rgt for last two array elements
+    // }
+    /*
 		while true do
 			min, old_distance = q.pop
 			return nil unless min
@@ -402,7 +383,7 @@ export class Router {
 			popom = parents[pom]
 			popom = popom[0] if popom
 			popom = popom.vertex if popom
-			if (v.vertex.name == }_node_name) && v.incident # reached destination -- check if we touched a vertex
+			if (v.vertex.name == end_node_name) && v.incident # reached destination -- check if we touched a vertex
 				hhh	= get_tangents(*uu.vertex.xy, hhh, prev_rgt, *v.vertex.xy, 0, false) # last two arguments are arbitrary
 				blocked = false
 				(uu.vertex.neighbors & v.vertex.neighbors).each{|el| # only two -- maybe CGAL query is faster?
@@ -486,7 +467,7 @@ export class Router {
 					next if cm.find{|el| el.x == v.vertex.x && el.y == v.vertex.y} # see note (1.) above
 					next if cm[0].x == cm[1].x && cm[0].y == cm[1].y # can this occur?
 					lr_turn = RBR::boolean_really_smart_cross_product_2d_with_offset(cm[0], cm[1], v.vertex) # left or right turn?
-					lcuts = Array.new # we need an empty lcuts array for outer turn
+					lcuts = [] # we need an empty lcuts array for outer turn
 				else
 					lr_turn = RBR::xboolean_really_smart_cross_product_2d_with_offset(u, w, v) # left or right turn?
 				}
@@ -582,31 +563,34 @@ export class Router {
 				}
 			}
 		}
-		path = Array.new
-		p = min
-		while p
-			if n = parents[p]
-				fail unless n[0] == p[1]
-				n[0].outer = outer_lane[p]
-				n[0].lr_turn = p[2] == outer_lane[p]
-			}
-			path << p[0]
-			p = n
-		}
-		cid = path.last.vertex.cid
-		if cid != -1 # ignore steps along edges of start cluster
-			while path[-2].vertex.cid == cid
-				path.pop
-			}
-		}
-		dijkstra_use_path(path, net_desc)
-		return path
-	}
+                */
+    let path = [];
+    let p = min;
+    while (p) {
+      if ((n = parents[p])) {
+        // fail unless n[0] == p[1]
+        n[0].outer = outer_lane[p];
+        n[0].lr_turn = p[2] == outer_lane[p];
+      }
+      path.push(p[0]);
+      p = n;
+    }
+    cid = path.last.vertex.cid;
+    if (cid != -1) {
+      // ignore steps along edges of start cluster
+      while (path[-2].vertex.cid == cid) {
+        path.pop();
+      }
+    }
+    dijkstra_use_path(path, net_desc);
+    return path;
+  }
+  /*
 
 	dijkstra_use_path(path, net_desc)
 		path.each_cons(3){|u, v, w| # inverted direction, but it ...
 			if u.vertex == w.vertex # the 2 PI turn already seen above
-				lcuts = Array.new
+				lcuts = []
 			else
 				lcuts = new_bor_list(u, w, v) # neighbours in the inner angle/lane
 				#fail unless lcuts == new_bor_list(w, u, v) # ... does not matter
@@ -824,14 +808,7 @@ return dijkstra(start_node, to, net_desc, 1.5) != nil
 				h = Math::hypot(dx, dy) #/ cur.g # zero for full 2 PI turn
 				dx /= h 
 				dy /= h
-				#r1.ox = cur.ox + dx
-				#r1.oy = cur.oy + dy
-				#r2.ox = cur.ox - dx
-				#r2.oy = cur.oy - dy
-				#r1.rx = r1.vertex.x + r1.ox
-				#r1.ry = r1.vertex.y + r1.oy
-				#r2.rx = r2.vertex.x + r2.ox
-				#r2.ry = r2.vertex.y + r2.oy
+				
 			}
 			this.regions << r1 << r2
 			cur.neighbors.each{|el| el.neighbors.delete(cur)}
@@ -894,55 +871,52 @@ return dijkstra(start_node, to, net_desc, 1.5) != nil
 		return true
 	}
 
-	# http://en.wikipedia.org/wiki/Tangent_lines_to_circles
-	# http://www.ambrsoft.com/TrigoCalc/Circles2/Circles2Tangent_.htm
-	# https://en.wikibooks.org/wiki/Algorithm_Implementation/Geometry/Tangents_between_two_circles
-	# UGLY: what when tangent does not exist?
         */
 
-  /*
+  smart_replace(step, list) {
+    if (step.prev == step.next) {
+      // # can occur due to nubly()
+      // #fail # can this really occur?
+      // fail unless list.empty? # should be empty?
+      step.pstep.nstep = step.nstep.nstep;
+      step.pstep.next = step.nstep.next;
+      step.nstep.nstep.pstep = step.pstep;
+      step.nstep.nstep.prev = step.prev;
+      step.next.new_delete_net(step.nstep);
+    } else if (list.length === 0) {
+      let ps = step.pstep;
+      let ns = step.nstep;
+      ps.next = step.next;
+      ns.prev = step.prev;
+      ps.nstep = ns;
+      ns.pstep = ps;
+    } else {
+      pstep = step.pstep;
+      pv = step.prev;
+      for (let v of list) {
+        let n = Step.new(pv, nil, step.id);
+        n.net_desc = step.net_desc;
+        n.vertex = v;
+        n.pstep = pstep;
+        pstep.nstep = n;
+        pstep.next = v;
+        pstep = n;
+        pv = v;
+        n.rgt = !step.rgt;
+        n.xt = true; // TODO: check
+        n.outer = true;
+        v.update(n);
+        v.attached_nets.push(n);
+      }
+      pstep.next = step.next;
+      pstep.nstep = step.nstep;
+      pstep.nstep.prev = pv;
+      pstep.nstep.pstep = pstep;
+    }
+    step.vertex.new_delete_net(step);
+  }
 
-	smart_replace(step, list)
-		if step.prev == step.next # can occur due to nubly()
-			#fail # can this really occur?
-			fail unless list.empty? # should be empty?
-			step.pstep.nstep = step.nstep.nstep
-			step.pstep.next = step.nstep.next
-			step.nstep.nstep.pstep = step.pstep
-			step.nstep.nstep.prev = step.prev
-			step.next.new_delete_net(step.nstep)
-		elsif list.empty?
-			ps = step.pstep
-			ns = step.nstep
- 			ps.next = step.next
- 			ns.prev = step.prev
-			ps.nstep = ns
-			ns.pstep = ps
-		else
-		  pstep = step.pstep
-			pv = step.prev
-			list.each{|v|
-				n = Step.new(pv, nil, step.id)
-				n.net_desc = step.net_desc
-				n.vertex = v
-				n.pstep = pstep
-				pstep.nstep = n
-				pstep.next = v 
-				pstep = n
-				pv = v
-				n.rgt = !step.rgt
-				n.xt = true # TODO: check
-				n.outer = true
-				v.update(n)
-				v.attached_nets << n
-			}
-			pstep.next = step.next
-			pstep.nstep = step.nstep
-			pstep.nstep.prev = pv
-			pstep.nstep.pstep = pstep
-		}
-		step.vertex.new_delete_net(step)
-	}
+  /*
 
 	#\   |   /
 	# \  |  /
@@ -965,39 +939,70 @@ return dijkstra(start_node, to, net_desc, 1.5) != nil
 
 
 	# sort attached nets and calculate its radii
-	prepare_steps
-		this.vertices.each{|vert|
-			next if vert.attached_nets.empty?
-			vert.reset_initial_size
-			[true, false].each{|b|
-				vert.attached_nets.each{|step|
-					next if step.xt == b
-					net = step.net_desc
-					trace_sep = [vert.separation, net.trace_clearance].max
-					vert.radius += trace_sep + net.trace_width
-					step.radius = vert.radius - net.trace_width * 0.5
-					vert.separation = net.trace_clearance
-				}
-			}
-		}
-	}
+        */
+  prepare_steps() {
+    for (let vert of this.vertices) {
+      if (vert.attached_nets.length === 0) continue;
+      vert.reset_initial_size();
+      for (let b of [true, false]) {
+        for (let step of vert.attached_nets) {
+          if (step.xt == b) continue;
+          let net = step.net_desc;
+          trace_sep = Math.max(vert.separation, net.trace_clearance);
+          vert.radius += trace_sep + net.trace_width;
+          step.radius = vert.radius - net.trace_width * 0.5;
+          vert.separation = net.trace_clearance;
+        }
+      }
+    }
+  }
 
-	sort_attached_nets
-		this.vertices.each{|vert| vert.sort_attached_nets}
-	}
+  sort_attached_nets() {
+    for (let vert of this.vertices) {
+      vert.sort_attached_nets();
+    }
+  }
 
-	convex_kkk(prev_step, step, nxt_step)
-		pv, cv, nv = step.prev, step.vertex, step.next
-		x1, y1, x2, y2	= get_tangents(pv.x, pv.y, prev_step.radius, prev_step.rgt, cv.x, cv.y, step.radius, step.rgt)
-		x3, y3, x4, y4	= get_tangents(cv.x, cv.y, step.radius, step.rgt, nv.x, nv.y, nxt_step.radius, nxt_step.rgt)
-		x2, y2, x3, y3 = line_line_intersection(x1, y1, x2, y2, x3, y3, x4, y4) # get crossing point and ua, ub
-				if (x2 != nil) && ((x3 > 0 && x3 < 1) || (y3 > 0 && y3 < 1))
-			return x2, y2
-		else
-			return nil
-		}
-	}
+  convex_kkk(prev_step, step, nxt_step) {
+    let [pv, cv, nv] = [step.prev, step.vertex, step.next];
+    let [x1, y1, x2, y2] = get_tangents(
+      pv.x,
+      pv.y,
+      prev_step.radius,
+      prev_step.rgt,
+      cv.x,
+      cv.y,
+      step.radius,
+      step.rgt
+    );
+    let [x3, y3, x4, y4] = get_tangents(
+      cv.x,
+      cv.y,
+      step.radius,
+      step.rgt,
+      nv.x,
+      nv.y,
+      nxt_step.radius,
+      nxt_step.rgt
+    );
+    let [x2, y2, x3, y3] = line_line_intersection(
+      x1,
+      y1,
+      x2,
+      y2,
+      x3,
+      y3,
+      x4,
+      y4
+    ); // get crossing point and ua, ub
+    if (x2 != nil && ((x3 > 0 && x3 < 1) || (y3 > 0 && y3 < 1))) {
+      return x2, y2;
+    } else {
+      return null;
+    }
+  }
 
+  /*
   nubly(collapse = false)
 		#return
 	  replaced = true
