@@ -50,8 +50,6 @@ class Vertex {
     }
   }
 
-  // Ugly:
-  // assume worst case order --> max radius
   unfriendly_resize() {
     cl = attached_nets.map(step => step.net_desc.trace_clearance);
     this.radius =
@@ -70,7 +68,6 @@ class Vertex {
     this.separation = cl.push(this.separation).max;
   }
 
-  // Ugly: may be obsolete -- at least it is only an estimation
   update(s) {
     net = s.net_desc;
     trace_sep = [this.separation, net.trace_clearance].max;
@@ -94,19 +91,23 @@ class Vertex {
 		attached_nets.delete_if{|s| step == s}
 		resize
         }
+        */
 
-	// Ugly:
-	_full_angle(s) {
-		return nil unless s.next && s.prev
-		v = s.vertex
-		d = Math.atan2(s.next.y - v.y, s.next.x - v.x) - Math.atan2(v.y - s.prev.y, v.x - s.prev.x)
-		if (d < -Math.PI) {
-		 	d += 2 * Math.PI
-                } else if (d > Math.PI) 
-			d -= 2 * Math.PI
-        }
-		return d
-        }
+  // Ugly:
+  _full_angle(s) {
+    if (!(s.next && s.prev)) return null;
+    let v = s.vertex;
+    let d =
+      Math.atan2(s.next.y - v.y, s.next.x - v.x) -
+      Math.atan2(v.y - s.prev.y, v.x - s.prev.x);
+    if (d < -Math.PI) {
+      d += 2 * Math.PI;
+    } else if (d > Math.PI) {
+      d -= 2 * Math.PI;
+    }
+    return d;
+  }
+  /*
 
 	// Ugly: check and improve
 	sort_attached_nets() {

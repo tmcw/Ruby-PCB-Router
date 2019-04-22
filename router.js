@@ -298,52 +298,6 @@ export class Router {
     y2 -= y1;
     // (ag.convex_hull_array - [v1, v2, hv1, hv2]).sort_by{|el| (el.x - x1) * x2 + (el.y - y1) * y2}
   }
-  /*
-
-  // https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm
-  // u --> v --> w
-  // Dijkstra's shortest path search -- along the edges of the constrained delaunay triangulation
-  //
-  //        v-----w
-  //  \    / \
-  //   \  /   \ lcut
-  //    u      x
-  //
-  // Generally we route at the inner lane -- doing so ensures that traces never cross.
-  // When the turn at u is opposite to the turn at v then we have to cross
-  // the line segment connecting u and v -- we need space for that.
-  // When we take the inner lane at v, then the lcut to vertex x is a restriction.
-  // When there starts an incident net in the inner lane this path
-  // is blocked, so we can use the outer lane, there can exist no inner
-  // crossing lanes. If we take the outer lane at v and inner lane at u,
-  // we have not to cross the line segment connection u and v and so on...
-  //
-  // So for this variant of Dijkstra's shortest path search we have not only to
-  // record the previous node, but also the lane (inner/outer) we took, because
-  // the next node may be only reachable when we do not have to cross a line
-  // segment between current and next node. We also record the parent of the previous
-  // node (u) -- because we have to check if there exists a terminal too close to u-v.
-  //
-  // So the key for the Fibonacci_Queue and parents and distances is not simple
-  // a node, but a tripel of node, previous node and lane.
-  //
-  // Update October 2015: Now we generally use outer lanes also -- for that qbors()
-  // function was changed. We still have to see if outer lanes really give benefit.
-  //
-  // Default unit of Size is 0.01 mil
-  // We will put this into a config file later
-  //
-  //	TODO: Check backside of first and last vertex of each path -- i.e. when traces
-  //	are thicker than pad or pin. Maybe we should leave that for manually fixing.
-  //	Ckecking is not really easy, and automatic fixing is some work.
-  //
-  //	(1.) Note: the cm arroach can fail for this case
-  //	(cm of neightbors of x is v, so distance to v is zero
-  //
-  //    /____    x  /____
-  //   /\        /\/
-  //   ||        || v
-          //   */
 
   dijkstra(start_node, end_node_name, net_desc, max_detour_factor = 2) {
     /*
@@ -916,30 +870,6 @@ return dijkstra(start_node, to, net_desc, 1.5) != nil
     step.vertex.new_delete_net(step);
   }
 
-  /*
-
-	#\   |   /
-	# \  |  /
-	#  \ | /  3 attached concave nets not overlapping
-	#    O ------------
-	#     \ -----
-	#      \
-	#       \
-	#        \
-	# sort attached nets and calculate its radii.
-	# this should work for concave (before attachment operator is applied) and convex final nets
-	# regard groups by angle: overlapping angles needs different radii for arcs,
-	# non overlapping attached arcs may have the same radius.
-	# generally one terminal should have at least two final convex groups -- but a terminal with
-	# a very big radius may have more than 2 attached groups.
-	# Indeed nets never cross, so overlapping is full including
-	# currently we collect all attached nets of a terminal in one single array called
-	# attached_nets -- we may consider using a separate array for each group...
-	# maybe we should regard minimal gap as overlapping? Introduce an eps?
-
-
-	# sort attached nets and calculate its radii
-        */
   prepare_steps() {
     for (let vert of this.vertices) {
       if (vert.attached_nets.length === 0) continue;
@@ -1002,97 +932,104 @@ return dijkstra(start_node, to, net_desc, 1.5) != nil
     }
   }
 
+  nubly(collapse = false) {
+    let replaced = true;
+    let rep_c = 0;
+    while (replaced) {
+      replaced = false;
+      rep_c += 1;
+      for (let cv of this.vertices) {
+        for (let i = cv.attached_nets.length - 1; i >= 0; i--) {
+          let step = cv.attached_nets[i];
+          [prev_step, nxt_step] = [step.pstep, step.nstep];
+
+          let [pv, nv] = [step.prev, step.next];
+          let d =
+            Math.hypot(cv.x - pv.x, cv.y - pv.y) -
+            (prev_step.radius - step.radius).abs * 1.02;
+          if (d < 0)
+            if (step.radius < prev_step.radius) {
+              step.radius -= d;
+              replaced = true;
+            }
+          next;
+        }
+        d =
+          Math.hypot(cv.x - nv.x, cv.y - nv.y) -
+          (nxt_step.radius - step.radius).abs * 1.02;
+        if (d < 0) {
+          if (step.radius < nxt_step.radius) {
+            step.radius -= d;
+            replaced = true;
+          }
+          next;
+        }
+
+        hx, (hy = convex_kkk(prev_step, step, nxt_step));
+        step.xt = hx != nil;
+        if (collapse && step.xt) {
+          pv, (nv = step.prev), step.next;
+          hv0 = Vertex.new(hx, hy);
+
+          replaced = true;
+          pvx = pv.x;
+          pvy = pv.y;
+          nvx = nv.x;
+          nvy = nv.y;
+          if (pp == prev_step.pstep) {
+            [hx, hy] = convex_kkk(pp, prev_step, step);
+          }
+          if (pp && hx) {
+            ppv = Vertex.new(hx, hy);
+          } else {
+            ppv = pv;
+          }
+          if (nn == nxt_step.nstep) {
+            [hx, hy] = convex_kkk(step, nxt_step, nn);
+          }
+          if (nn && hx) {
+            nnv = Vertex.new(hx, hy);
+          } else {
+            nnv = nv;
+          }
+          hx = nvx - pvx;
+          hy = nvy - pvy;
+          if (step.rgt) {
+            vec_x, (vec_y = hy), -hx;
+          } else {
+            vec_x, (vec_y = -hy), hx;
+          }
+          hv3 = Vertex.new(pvx + hx * 0.5 + vec_x, pvy + hy * 0.5 + vec_y);
+          hx *= 2;
+          hy *= 2;
+          vec_x *= 2;
+          vec_y *= 2;
+          hv4 = Vertex.new(pvx - hx + vec_x, pvy - hy + vec_y);
+          hv5 = Vertex.new(nvx + hx + vec_x, nvy + hy + vec_y);
+          rep =
+            vertices_in_polygon([ppv, hv0, nnv, hv3], this.vertices) -
+            [pv, nv, ppv, cv, nnv, hv3];
+          if (rep.length) {
+            net = step.net_desc;
+            for (let v of rep) {
+              v.trgt = !step.rgt;
+              v.tradius =
+                v.radius +
+                [net.trace_clearance, v.separation].max +
+                net.trace_width * 0.5;
+            }
+            pv.trgt = step.pstep.rgt;
+            pv.tradius = step.pstep.radius;
+            nv.trgt = step.nstep.rgt;
+            nv.tradius = step.nstep.radius;
+            rep = new_convex_vertices(rep, pv, nv, hv4, hv5);
+          }
+          smart_replace(step, rep);
+        }
+      }
+    }
+  }
   /*
-  nubly(collapse = false)
-		#return
-	  replaced = true
-		rep_c = 0
-		while replaced do
-			replaced = false
-			rep_c += 1
-			this.vertices.each{|cv|
-				cv.attached_nets.reverse_each{|step|
-					prev_step, nxt_step = step.pstep, step.nstep
-
-					pv, nv = step.prev, step.next
-					d = Math::hypot(cv.x - pv.x, cv.y - pv.y) - (prev_step.radius - step.radius).abs * 1.02
-					if d < 0
-						if step.radius < prev_step.radius
-							step.radius -= d
-							replaced = true
-						}
-						next
-					}
-					d = Math::hypot(cv.x - nv.x, cv.y - nv.y) - (nxt_step.radius - step.radius).abs * 1.02
-					if d < 0
-						if step.radius < nxt_step.radius
-							step.radius -= d
-							replaced = true
-						}
-						next
-					}
-
-					hx, hy = convex_kkk(prev_step, step, nxt_step)
-					step.xt = hx != nil
-					if collapse && step.xt
-						pv, nv = step.prev, step.next
-						hv0 = Vertex.new(hx, hy)
-
-						#fail if pv == nv
-						replaced = true
-						pvx = pv.x
-						pvy = pv.y
-						nvx = nv.x
-						nvy = nv.y
-						if pp = prev_step.pstep
-							hx, hy = convex_kkk(pp, prev_step, step)
-						}
-						if pp && hx
-							ppv = Vertex.new(hx, hy)
-						else
-							ppv = pv
-						}
-						if nn = nxt_step.nstep
-							hx, hy = convex_kkk(step, nxt_step, nn)
-						}
-						if nn && hx
-							nnv = Vertex.new(hx, hy)
-						else
-							nnv = nv
-						}
-						hx = nvx - pvx
-						hy = nvy - pvy
-						if step.rgt
-							vec_x, vec_y = hy, -hx
-						else
-							vec_x, vec_y = -hy, hx
-						}
-						hv3 = Vertex.new(pvx + hx * 0.5 + vec_x, pvy + hy * 0.5 + vec_y)
-						hx *= 2
-						hy *= 2
-						vec_x *= 2
-						vec_y *= 2
-						hv4 = Vertex.new(pvx - hx + vec_x, pvy - hy + vec_y)
-						hv5 = Vertex.new(nvx + hx + vec_x, nvy + hy + vec_y)
-						rep = vertices_in_polygon([ppv, hv0, nnv, hv3], this.vertices) - [pv, nv, ppv, cv, nnv, hv3]
-						unless rep.empty?
-							net = step.net_desc
-							rep.each{|v|
-								v.trgt = !step.rgt
-								v.tradius = v.radius + [net.trace_clearance, v.separation].max + net.trace_width * 0.5
-							}
-							pv.trgt = step.pstep.rgt
-							pv.tradius = step.pstep.radius
-							nv.trgt = step.nstep.rgt
-							nv.tradius = step.nstep.radius
-							rep = new_convex_vertices(rep, pv, nv, hv4, hv5)
-						}
-						smart_replace(step, rep)
-					}
-				}
-			}
-		}
-	}
 
 	draw_routes(layer = 0)
 		this.file = File.open("layer_#{2 - layer}.pcb", "w")	
